@@ -9,6 +9,15 @@ public class Person {
 
     public Person() {}
 
+    // ✅ Thêm constructor 3 tham số để User có thể gọi super(id, name, email)
+    public Person(int id, String name, String email) {
+        this.id = id;
+        this.name = name;
+        this.email = email;
+        this.phone = null; // Mặc định là null khi gọi constructor này
+        this.avatar = null; // Mặc định là null khi gọi constructor này
+    }
+
     public Person(int id, String name, String email, String phone, String avatar) {
         this.id = id;
         this.name = name;

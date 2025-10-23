@@ -23,6 +23,17 @@ public class Notification {
         this.createdAt = createdAt;
     }
 
+    // ✅ SỬA LỖI: Cập nhật thứ tự tham số để khớp với AppointmentService.java
+    // Thứ tự mong muốn: (userId, title, message, userType)
+    public Notification(int userId, String title, String message, String userType) {
+        this.userId = userId;
+        this.title = title;
+        this.message = message;
+        this.userType = userType;
+        this.isRead = false;
+        this.createdAt = LocalDateTime.now();
+    }
+
     public int getId() { return id; }
     public void setId(int id) { this.id = id; }
 

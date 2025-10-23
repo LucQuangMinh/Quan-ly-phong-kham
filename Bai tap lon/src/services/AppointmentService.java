@@ -5,6 +5,8 @@ import dao.NotificationDAO;
 import models.Appointment;
 import models.Notification;
 
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.LocalDateTime;
 
 public class AppointmentService {
@@ -12,65 +14,77 @@ public class AppointmentService {
     private AppointmentDAO appointmentDAO = new AppointmentDAO();
     private NotificationDAO notificationDAO = new NotificationDAO();
 
-    // Create new appointment (called when patient books a doctor)
+    // 🔹 Tạo lịch hẹn mới (bệnh nhân đặt lịch)
     public boolean createAppointment(Appointment appointment) {
+        LocalDateTime appointmentDateTime = LocalDateTime.of(
+                appointment.getDate(),
+                appointment.getTime()
+        );
+
         boolean success = appointmentDAO.create(appointment);
         if (success) {
-            // Send notification to patient
+            // ✅ Gửi thông báo cho bệnh nhân: Order (PatientId, Title, Message, userType)
             notificationDAO.create(new Notification(
                     appointment.getPatientId(),
-                    "You have successfully booked an appointment with doctor ID " + appointment.getDoctorId(),
-                    "Appointment created successfully",
+                    "Đặt lịch thành công",
+                    "Bạn đã đặt lịch hẹn thành công với bác sĩ ID " + appointment.getDoctorId() + " vào " + appointmentDateTime,
                     "patient"
             ));
 
-            // Send notification to doctor
+            // ✅ Gửi thông báo cho bác sĩ: Order (DoctorId, Title, Message, userType)
             notificationDAO.create(new Notification(
                     appointment.getDoctorId(),
-                    "A patient has booked an appointment with you at " + appointment.getAppointmentTime(),
-                    "New appointment request",
+                    "Yêu cầu lịch hẹn mới",
+                    "Bệnh nhân ID " + appointment.getPatientId() + " đã đặt lịch hẹn với bạn vào " + appointmentDateTime,
                     "doctor"
             ));
         }
         return success;
     }
 
-    // Doctor confirms the appointment
+    // 🔹 Bác sĩ xác nhận lịch hẹn
     public boolean confirmAppointment(int appointmentId, int doctorId) {
         Appointment appointment = appointmentDAO.findById(appointmentId);
         if (appointment == null) {
             System.out.println("Appointment not found.");
             return false;
         }
+        
+        LocalDate date = appointment.getDate();
+        LocalTime time = appointment.getTime();
+        
+        if (date == null || time == null) {
+            System.out.println("Appointment time is invalid.");
+            return false;
+        }
 
-        // Check for time conflict
-        if (appointmentDAO.isDoctorBusy(doctorId, appointment.getAppointmentTime())) {
+        if (appointmentDAO.isDoctorBusy(doctorId, date, time)) {
             System.out.println("Doctor is busy at this time. Cannot confirm appointment.");
             return false;
         }
 
-        // Update status to confirmed
         boolean updated = appointmentDAO.updateStatus(appointmentId, "confirmed");
         if (updated) {
-            // Notify both doctor and patient
+            // ✅ Gửi thông báo xác nhận cho bệnh nhân
             notificationDAO.create(new Notification(
                     appointment.getPatientId(),
-                    "Your appointment has been confirmed by the doctor.",
-                    "Appointment confirmed",
+                    "Xác nhận lịch hẹn",
+                    "Lịch hẹn của bạn đã được bác sĩ xác nhận vào " + date + " lúc " + time,
                     "patient"
             ));
 
+            // ✅ Gửi thông báo cho bác sĩ
             notificationDAO.create(new Notification(
                     doctorId,
-                    "You have confirmed the appointment with patient ID " + appointment.getPatientId(),
-                    "Appointment confirmed successfully",
+                    "Xác nhận thành công",
+                    "Bạn đã xác nhận lịch hẹn với bệnh nhân ID " + appointment.getPatientId(),
                     "doctor"
             ));
         }
         return updated;
     }
 
-    // Doctor rejects the appointment
+    // 🔹 Bác sĩ từ chối lịch hẹn
     public boolean rejectAppointment(int appointmentId, int doctorId, String reason) {
         Appointment appointment = appointmentDAO.findById(appointmentId);
         if (appointment == null) {
@@ -80,25 +94,26 @@ public class AppointmentService {
 
         boolean updated = appointmentDAO.updateStatus(appointmentId, "cancelled");
         if (updated) {
-            // Notify both doctor and patient
+            // ✅ Gửi thông báo từ chối cho bệnh nhân
             notificationDAO.create(new Notification(
                     appointment.getPatientId(),
-                    "Your appointment was rejected by the doctor. Reason: " + reason,
-                    "Appointment rejected",
+                    "Từ chối lịch hẹn",
+                    "Lịch hẹn của bạn bị bác sĩ từ chối. Lý do: " + reason,
                     "patient"
             ));
 
+            // ✅ Gửi thông báo cho bác sĩ
             notificationDAO.create(new Notification(
                     doctorId,
-                    "You have rejected the appointment with patient ID " + appointment.getPatientId(),
-                    "Appointment cancelled",
+                    "Từ chối thành công",
+                    "Bạn đã từ chối lịch hẹn với bệnh nhân ID " + appointment.getPatientId(),
                     "doctor"
             ));
         }
         return updated;
     }
 
-    // Mark appointment as completed (doctor side)
+    // 🔹 Bác sĩ hoàn thành lịch hẹn
     public boolean completeAppointment(int appointmentId, int doctorId) {
         Appointment appointment = appointmentDAO.findById(appointmentId);
         if (appointment == null) {
@@ -108,18 +123,18 @@ public class AppointmentService {
 
         boolean updated = appointmentDAO.updateStatus(appointmentId, "completed");
         if (updated) {
-            // Notify patient
+            // ✅ Gửi thông báo hoàn thành cho bệnh nhân
             notificationDAO.create(new Notification(
                     appointment.getPatientId(),
-                    "Your appointment has been completed successfully.",
-                    "Appointment completed",
+                    "Hoàn thành lịch hẹn",
+                    "Lịch hẹn của bạn đã hoàn thành thành công.",
                     "patient"
             ));
         }
         return updated;
     }
 
-    // Patient cancels the appointment
+    // 🔹 Bệnh nhân huỷ lịch hẹn
     public boolean cancelAppointment(int appointmentId, int patientId, String reason) {
         Appointment appointment = appointmentDAO.findById(appointmentId);
         if (appointment == null) {
@@ -129,19 +144,19 @@ public class AppointmentService {
 
         boolean updated = appointmentDAO.updateStatus(appointmentId, "cancelled");
         if (updated) {
-            // Notify doctor
+            // ✅ Gửi thông báo hủy cho bác sĩ
             notificationDAO.create(new Notification(
                     appointment.getDoctorId(),
-                    "The appointment was cancelled by the patient. Reason: " + reason,
-                    "Appointment cancelled",
+                    "Huỷ lịch hẹn",
+                    "Bệnh nhân đã huỷ lịch hẹn. Lý do: " + reason,
                     "doctor"
             ));
 
-            // Notify patient
+            // ✅ Gửi thông báo hủy cho bệnh nhân
             notificationDAO.create(new Notification(
                     patientId,
-                    "You have cancelled your appointment successfully.",
-                    "Appointment cancelled",
+                    "Huỷ lịch hẹn",
+                    "Bạn đã huỷ lịch hẹn thành công.",
                     "patient"
             ));
         }

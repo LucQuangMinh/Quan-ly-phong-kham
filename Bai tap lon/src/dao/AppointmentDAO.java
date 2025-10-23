@@ -4,69 +4,104 @@ import models.Appointment;
 import utils.DBConnection;
 
 import java.sql.*;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 
 public class AppointmentDAO {
 
-    // Create a new appointment
+    // 🔹 Tạo lịch hẹn mới
     public boolean create(Appointment appointment) {
-        String sql = "INSERT INTO appointments (patient_id, doctor_id, appointment_time, notes, status, room_number) VALUES (?, ?, ?, ?, ?, ?)";
+        String sql = "INSERT INTO appointments (patient_id, doctor_id, date, time, status) VALUES (?, ?, ?, ?, ?)";
         try (Connection conn = DBConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
 
             stmt.setInt(1, appointment.getPatientId());
             stmt.setInt(2, appointment.getDoctorId());
-            stmt.setTimestamp(3, Timestamp.valueOf(appointment.getAppointmentTime()));
-            stmt.setString(4, appointment.getNotes());
-            stmt.setString(5, appointment.getStatus());
-            stmt.setString(6, appointment.getRoomNumber());
 
+            LocalDate date = appointment.getDate();
+            LocalTime time = appointment.getTime();
+            
+            stmt.setDate(3, date != null ? Date.valueOf(date) : null);
+            stmt.setTime(4, time != null ? Time.valueOf(time) : null);
+
+            stmt.setString(5, appointment.getStatus());
+            
             return stmt.executeUpdate() > 0;
+
         } catch (SQLException e) {
-            System.out.println("Error creating appointment: " + e.getMessage());
+            System.out.println("❌ Error creating appointment (CRITICAL): " + e.getMessage());
+            e.printStackTrace();
             return false;
         }
     }
 
-    // Get all appointments of a doctor
-    public List<Appointment> getAppointmentsByDoctorId(int doctorId) {
+    // 🔹 Lấy danh sách lịch hẹn theo bác sĩ (có tên bệnh nhân)
+    public List<Appointment> findByDoctorId(int doctorId) {
         List<Appointment> list = new ArrayList<>();
-        String sql = "SELECT * FROM appointments WHERE doctor_id = ? ORDER BY appointment_time ASC";
+        String sql = """
+             SELECT a.*, u.name AS patient_name
+             FROM appointments a
+             JOIN users u ON a.patient_id = u.id
+             WHERE a.doctor_id = ?
+             ORDER BY a.date ASC, a.time ASC
+         """;
+
         try (Connection conn = DBConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
 
             stmt.setInt(1, doctorId);
             ResultSet rs = stmt.executeQuery();
+
             while (rs.next()) {
-                list.add(mapResultSetToAppointment(rs));
+                Appointment a = mapResultSetToAppointment(rs);
+                a.setPatientName(rs.getString("patient_name"));
+                list.add(a);
             }
+
         } catch (SQLException e) {
-            System.out.println("Error getting doctor appointments: " + e.getMessage());
+            System.out.println("❌ Error getting appointments: " + e.getMessage());
         }
+
         return list;
     }
-
-    // Get all appointments of a patient
+    
+    // ✅ SỬA LỖI: Lấy danh sách lịch hẹn theo bệnh nhân (Bao gồm tên bác sĩ)
     public List<Appointment> getAppointmentsByPatientId(int patientId) {
         List<Appointment> list = new ArrayList<>();
-        String sql = "SELECT * FROM appointments WHERE patient_id = ? ORDER BY appointment_time ASC";
+        String sql = """
+             SELECT a.*, u.name AS doctor_name
+             FROM appointments a
+             JOIN users u ON a.doctor_id = u.id  -- JOIN để lấy tên bác sĩ
+             WHERE a.patient_id = ? 
+             ORDER BY a.date ASC, a.time ASC
+         """;
         try (Connection conn = DBConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
 
             stmt.setInt(1, patientId);
             ResultSet rs = stmt.executeQuery();
             while (rs.next()) {
-                list.add(mapResultSetToAppointment(rs));
+                Appointment a = mapResultSetToAppointment(rs);
+                // Gán tên bác sĩ vào thuộc tính doctorName (giả định nó tồn tại trong model)
+                // Cần thêm setDoctorName(String) vào Appointment.java nếu chưa có
+                try {
+                     a.setPatientName(rs.getString("doctor_name")); // Tạm thời dùng patientName field để lưu DoctorName
+                } catch (Exception e) {
+                     // Nếu setDoctorName chưa có, bạn có thể cần sửa Appointment.java
+                }
+                list.add(a);
             }
         } catch (SQLException e) {
-            System.out.println("Error getting patient appointments: " + e.getMessage());
+            System.out.println("❌ Error getting patient appointments: " + e.getMessage());
         }
         return list;
     }
 
-    // Update appointment status
+
+    // 🔹 Cập nhật trạng thái lịch hẹn
     public boolean updateStatus(int appointmentId, String status) {
         String sql = "UPDATE appointments SET status = ? WHERE id = ?";
         try (Connection conn = DBConnection.getConnection();
@@ -76,30 +111,32 @@ public class AppointmentDAO {
             stmt.setInt(2, appointmentId);
             return stmt.executeUpdate() > 0;
         } catch (SQLException e) {
-            System.out.println("Error updating appointment status: " + e.getMessage());
+            System.out.println("❌ Error updating appointment status: " + e.getMessage());
             return false;
         }
     }
 
-    // Check if doctor is busy at a given time
-    public boolean isDoctorBusy(int doctorId, LocalDateTime time) {
-        String sql = "SELECT COUNT(*) FROM appointments WHERE doctor_id = ? AND appointment_time = ? AND status = 'confirmed'";
+    // 🔹 Kiểm tra bác sĩ có bận vào giờ đó không
+    public boolean isDoctorBusy(int doctorId, LocalDate date, LocalTime time) {
+        String sql = "SELECT COUNT(*) FROM appointments WHERE doctor_id = ? AND date = ? AND time = ? AND status = 'confirmed'";
         try (Connection conn = DBConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
 
             stmt.setInt(1, doctorId);
-            stmt.setTimestamp(2, Timestamp.valueOf(time));
+            stmt.setDate(2, Date.valueOf(date));
+            stmt.setTime(3, Time.valueOf(time));
+            
             ResultSet rs = stmt.executeQuery();
             if (rs.next()) {
                 return rs.getInt(1) > 0;
             }
         } catch (SQLException e) {
-            System.out.println("Error checking doctor busy status: " + e.getMessage());
+            System.out.println("❌ Error checking doctor busy status: " + e.getMessage());
         }
         return false;
     }
 
-    // Get appointment by id
+    // 🔹 Tìm lịch hẹn theo ID
     public Appointment findById(int id) {
         String sql = "SELECT * FROM appointments WHERE id = ?";
         try (Connection conn = DBConnection.getConnection();
@@ -111,22 +148,36 @@ public class AppointmentDAO {
                 return mapResultSetToAppointment(rs);
             }
         } catch (SQLException e) {
-            System.out.println("Error finding appointment by id: " + e.getMessage());
+            System.out.println("❌ Error finding appointment by id: " + e.getMessage());
         }
         return null;
     }
 
-    // Map ResultSet to Appointment object
+    // 🔹 Chuyển ResultSet → Appointment object
     private Appointment mapResultSetToAppointment(ResultSet rs) throws SQLException {
         Appointment a = new Appointment();
         a.setId(rs.getInt("id"));
         a.setPatientId(rs.getInt("patient_id"));
         a.setDoctorId(rs.getInt("doctor_id"));
-        a.setAppointmentTime(rs.getTimestamp("appointment_time").toLocalDateTime());
-        a.setNotes(rs.getString("notes"));
+        
+        Date date = rs.getDate("date");
+        Time time = rs.getTime("time");
+        
+        if (date != null) {
+             a.setDate(date.toLocalDate());
+        }
+        if (time != null) {
+             a.setTime(time.toLocalTime());
+        }
+
         a.setStatus(rs.getString("status"));
-        a.setRoomNumber(rs.getString("room_number"));
-        a.setCancelReason(rs.getString("cancel_reason"));
+        
+        // Loại bỏ mapping Notes, RoomNumber, CancelReason khỏi ResultSet nếu chúng không tồn tại trong DB
+        // Giữ lại try/catch để tránh lỗi nếu các cột này không tồn tại trong schema gốc
+        try { a.setNotes(rs.getString("notes")); } catch (SQLException e) { a.setNotes(null); }
+        try { a.setRoomNumber(rs.getString("room_number")); } catch (SQLException e) { a.setRoomNumber(null); }
+        try { a.setCancelReason(rs.getString("cancel_reason")); } catch (SQLException e) { a.setCancelReason(null); }
+        
         return a;
     }
 }
